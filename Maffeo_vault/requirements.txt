@@ -1,0 +1,18 @@
+# ── Database ──────────────────────────────────────────
+supabase==2.9.1
+psycopg2-binary==2.9.9
+
+# ── AI / Embeddings (Phase 2+) ────────────────────────
+# langchain==0.2.16
+# langchain-anthropic==0.1.23
+# sentence-transformers==3.0.1
+# chainlit==1.1.306
+
+# ── NLP / Concept Extraction (Phase 2+) ──────────────
+# keybert==0.8.5
+# spacy==3.7.6
+
+# ── Utilities ─────────────────────────────────────────
+python-dotenv==1.0.1
+rich==13.7.1
+click==8.1.7
