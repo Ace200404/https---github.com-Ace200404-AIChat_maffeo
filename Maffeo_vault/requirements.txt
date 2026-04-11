@@ -6,9 +6,9 @@ sentence-transformers
 torch
 
 # ── AI Agent (Phase 3+) ───────────────────────────────
-# langchain
-# langchain-anthropic
-# chainlit
+langchain
+langchain-anthropic
+chainlit
 
 # ── NLP / Concept Extraction (Phase 3+) ──────────────
 # keybert
