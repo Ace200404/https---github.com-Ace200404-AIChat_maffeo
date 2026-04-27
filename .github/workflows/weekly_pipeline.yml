@@ -12,6 +12,12 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
 
+    env:
+      SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY:  ${{ secrets.SUPABASE_ANON_KEY }}
+      TRANSISTOR_API_KEY: ${{ secrets.TRANSISTOR_API_KEY }}
+      ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,10 +43,5 @@ jobs:
           key: ${{ runner.os }}-hf-all-MiniLM-L6-v2
 
       - name: Run pipeline
-        env:
-          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY:   ${{ secrets.SUPABASE_ANON_KEY }}
-          TRANSISTOR_API_KEY:  ${{ secrets.TRANSISTOR_API_KEY }}
-          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
         working-directory: Maffeo_vault
         run: python scripts/run_pipeline.py
