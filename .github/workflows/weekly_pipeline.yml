@@ -36,6 +36,19 @@ jobs:
           path: ~/.cache/huggingface
           key: ${{ runner.os }}-hf-all-MiniLM-L6-v2
 
+      - name: Check secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TRANSISTOR_API_KEY: ${{ secrets.TRANSISTOR_API_KEY }}
+        run: |
+          python -c "
+          import os
+          print('SUPABASE_URL set:', bool(os.getenv('SUPABASE_URL')))
+          print('SUPABASE_ANON_KEY set:', bool(os.getenv('SUPABASE_ANON_KEY')))
+          print('TRANSISTOR_API_KEY set:', bool(os.getenv('TRANSISTOR_API_KEY')))
+          "
+
       - name: Run pipeline
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
