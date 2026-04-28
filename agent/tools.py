@@ -21,7 +21,7 @@ from langchain.tools import tool
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline.config import get_supabase
 
-# ── Embedding model (loaded once, reused across all tool calls) ───────────────
+# ── Embedding model (loaded once per process, reused across all tool calls) ───
 _model = None
 
 def get_model():
@@ -51,6 +51,15 @@ def _format_time(seconds) -> str:
 
 def _format_segment(seg: dict) -> str:
     """Formats a segment into a citation string for the agent."""
+    if seg.get("source") == "article":
+        title = seg.get("article_title") or "Article"
+        url   = seg.get("article_url") or ""
+        link  = f" ({url})" if url else ""
+        return (
+            f"[Article: {title}{link} | "
+            f"{seg.get('speaker', 'Unknown')}]\n"
+            f"{seg.get('text', '')}"
+        )
     return (
         f"[Episode {seg.get('episode_number', '?')} | "
         f"{seg.get('speaker', 'Unknown')} | "

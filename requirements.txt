@@ -8,6 +8,8 @@ torch
 # ── AI Agent (Phase 3+) ───────────────────────────────
 langchain
 langchain-anthropic
+langgraph
+streamlit
 chainlit
 
 # ── NLP / Concept Extraction (Phase 3+) ──────────────

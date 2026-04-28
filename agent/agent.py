@@ -73,8 +73,8 @@ def get_agent_response(user_message: str, memory: VaultMemory) -> str:
 
     messages.append(HumanMessage(content=user_message))
 
-    # Run the agent
-    result = agent.invoke({"messages": messages})
+    # Run the agent (recursion_limit prevents infinite tool-call loops)
+    result = agent.invoke({"messages": messages}, {"recursion_limit": 10})
 
     # Extract the final response text
     response = ""

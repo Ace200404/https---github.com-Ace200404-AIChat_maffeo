@@ -3,8 +3,6 @@ app.py — Streamlit chat interface for the Maffeo Vault.
 
 Run with:
     streamlit run ui/app.py
-
-Then open: http://localhost:8501
 """
 
 import sys
@@ -20,6 +18,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from agent.agent import get_agent_response
 from agent.memory import VaultMemory
 
+
+@st.cache_resource
+def _preload_embedding_model():
+    """Load the embedding model once at startup and keep it cached."""
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
+# Trigger model load immediately so it's warm before the first message
+_preload_embedding_model()
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Maffeo Vault",
@@ -28,10 +37,9 @@ st.set_page_config(
 )
 
 st.title("🎙️ Maffeo Vault")
-st.caption("Ask anything from 113+ episodes of the MAFFEO DRINKS podcast.")
+st.caption("Ask anything from 120+ episodes of the MAFFEO DRINKS podcast.")
 
 # ── Session state ─────────────────────────────────────────────────────────────
-# Persists memory and chat history across reruns within the same session
 if "memory" not in st.session_state:
     st.session_state.memory = VaultMemory()
 
@@ -59,14 +67,12 @@ for msg in st.session_state.messages:
 # ── Chat input ────────────────────────────────────────────────────────────────
 if prompt := st.chat_input("Ask the vault..."):
 
-    # Show user message immediately
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate response
     with st.chat_message("assistant"):
-        with st.spinner("Searching vault..."):
+        with st.spinner("Thinking..."):
             try:
                 response = get_agent_response(
                     user_message=prompt,
@@ -80,5 +86,4 @@ if prompt := st.chat_input("Ask the vault..."):
 
         st.markdown(response)
 
-    # Save to display history
     st.session_state.messages.append({"role": "assistant", "content": response})

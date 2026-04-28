@@ -28,8 +28,6 @@ from pipeline.importer import (
     upsert_speakers,
     log_pipeline_run,
 )
-from pipeline.ghost_api import fetch_new_posts
-from pipeline.ghost_importer import insert_article, chunk_article, insert_article_segments
 
 console = Console()
 
@@ -42,7 +40,7 @@ def main(dry_run: bool):
 
     console.print(Panel.fit(
         "[bold cyan]Maffeo Vault — Weekly Pipeline[/]\n"
-        "Checking Transistor.fm (episodes) + Ghost (articles)"
+        "Checking Transistor.fm for new episodes..."
         + (" [dim](dry run)[/]" if dry_run else ""),
         border_style="cyan"
     ))
@@ -70,6 +68,10 @@ def main(dry_run: bool):
             f"{ep.get('title', 'Untitled')[:60]}"
         )
 
+    if dry_run:
+        console.print("\n[yellow]Dry run — nothing imported.[/]")
+        return
+
     # ── Step 2: Import each new episode ──────────────────────────────────────
     console.print(f"\n[bold]Step 2:[/] Importing {len(new_episodes)} episode(s)...")
 
@@ -78,18 +80,12 @@ def main(dry_run: bool):
     total    = len(new_episodes)
 
     for idx, ep in enumerate(new_episodes, start=1):
-        ep_num        = ep.get("episode_number")
+        ep_num        = ep.get("episode_number", "?")
         transistor_id = ep["transistor_id"]
         title         = ep.get("title", "Untitled")[:55]
         start         = time.time()
 
         console.print(f"\n[dim]({idx}/{total})[/] Ep {ep_num} — {title}")
-
-        # Skip trailers/specials that have no episode number
-        if ep_num is None:
-            console.print(f"  [yellow]⟳ Skipped[/] — no episode number (trailer/special)")
-            results["no_transcript"] += 1
-            continue
 
         # Fetch the transcript JSON
         transcript_url = ep.get("transcript_json_url")
@@ -140,41 +136,9 @@ def main(dry_run: bool):
             results["failed"] += 1
             console.print(f"  [red]✗ Failed:[/] {e}")
 
-    # ── Step 3: Ghost articles ────────────────────────────────────────────────
-    console.print(f"\n[bold]Step 3:[/] Checking Ghost for new articles...")
-    article_ids     = []
-    articles_failed = 0
-    try:
-        new_posts = fetch_new_posts()
-        if not new_posts:
-            console.print("  [green]✓[/] No new articles.")
-        else:
-            console.print(f"  Found [bold]{len(new_posts)}[/] new article(s):")
-            for post in new_posts:
-                console.print(f"  — {post['title'][:70]}")
-
-            if not dry_run:
-                for post in new_posts:
-                    try:
-                        article_id = insert_article(post)
-                        segments   = chunk_article(post, article_id)
-                        inserted   = insert_article_segments(segments)
-                        console.print(f"  [green]✓[/] \"{post['title'][:50]}\" — {inserted} chunks")
-                        article_ids.append(article_id)
-                    except Exception as e:
-                        articles_failed += 1
-                        console.print(f"  [red]✗ Failed:[/] {post['title'][:50]} — {e}")
-    except Exception as e:
-        console.print(f"  [yellow]Warning:[/] Ghost pipeline skipped: {e}")
-
-    if dry_run:
-        console.print("\n[yellow]Dry run — nothing imported.[/]")
-        return
-
-    # ── Step 4: Generate embeddings for new segments ──────────────────────────
-    all_new_episode_ids = imported_ids
-    if (all_new_episode_ids or article_ids) and (results["success"] > 0 or article_ids):
-        console.print(f"\n[bold]Step 4:[/] Generating embeddings for new segments...")
+    # ── Step 3: Generate embeddings for new segments ──────────────────────────
+    if imported_ids and results["success"] > 0:
+        console.print(f"\n[bold]Step 3:[/] Generating embeddings for new segments...")
         try:
             from sentence_transformers import SentenceTransformer
             from pipeline.config import get_supabase
@@ -182,78 +146,40 @@ def main(dry_run: bool):
             db    = get_supabase()
             model = SentenceTransformer("all-MiniLM-L6-v2")
 
-            PAGE           = 1000
-            offset         = 0
-            total_embedded = 0
+            # Fetch segments without embeddings for newly imported episodes
+            result = (
+                db.table("segments")
+                .select("id, text")
+                .in_("episode_id", imported_ids)
+                .is_("embedding", "null")
+                .execute()
+            )
 
-            while True:
-                # Fetch un-embedded segments from both new episodes and new articles
-                query = db.table("segments").select("id, text").is_("embedding", "null")
+            segments_to_embed = result.data
+            console.print(f"  Embedding {len(segments_to_embed)} new segments...")
 
-                if all_new_episode_ids and article_ids:
-                    # Both sources — filter by either episode_id or article_id
-                    result = (
-                        db.table("segments")
-                        .select("id, text")
-                        .is_("embedding", "null")
-                        .range(offset, offset + PAGE - 1)
-                        .execute()
-                    )
-                elif all_new_episode_ids:
-                    result = (
-                        db.table("segments")
-                        .select("id, text")
-                        .in_("episode_id", all_new_episode_ids)
-                        .is_("embedding", "null")
-                        .range(offset, offset + PAGE - 1)
-                        .execute()
-                    )
-                else:
-                    result = (
-                        db.table("segments")
-                        .select("id, text")
-                        .in_("article_id", article_ids)
-                        .is_("embedding", "null")
-                        .range(offset, offset + PAGE - 1)
-                        .execute()
-                    )
+            for seg in segments_to_embed:
+                vector = model.encode(
+                    seg["text"],
+                    normalize_embeddings=True
+                ).tolist()
+                db.table("segments").update({
+                    "embedding": vector
+                }).eq("id", seg["id"]).execute()
 
-                batch = result.data
-                if not batch:
-                    break
-
-                console.print(f"  Embedding {len(batch)} segments (offset {offset})...")
-
-                for seg in batch:
-                    vector = model.encode(
-                        seg["text"],
-                        normalize_embeddings=True
-                    ).tolist()
-                    db.table("segments").update({
-                        "embedding": vector
-                    }).eq("id", seg["id"]).execute()
-
-                total_embedded += len(batch)
-                offset         += PAGE
-
-            console.print(f"  [green]✓[/] {total_embedded} embeddings generated")
+            console.print(f"  [green]✓[/] Embeddings generated")
 
         except Exception as e:
             console.print(f"  [yellow]Warning:[/] Embedding failed: {e}")
             console.print("  Run: python scripts/generate_embeddings.py")
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    any_failed = results["failed"] > 0 or articles_failed > 0
     console.print(Panel.fit(
         f"[bold green]Pipeline complete![/]\n\n"
-        f"[cyan]Episodes[/]\n"
-        f"  [green]✓ Imported:[/]       {results['success']}\n"
-        f"  [yellow]⟳ No transcript:[/] {results['no_transcript']}\n"
-        f"  [red]✗ Failed:[/]         {results['failed']}\n\n"
-        f"[cyan]Articles[/]\n"
-        f"  [green]✓ Imported:[/]       {len(article_ids)}\n"
-        f"  [red]✗ Failed:[/]         {articles_failed}",
-        border_style="green" if not any_failed else "yellow"
+        f"[green]✓ Imported:[/]       {results['success']}\n"
+        f"[yellow]⟳ No transcript:[/] {results['no_transcript']}\n"
+        f"[red]✗ Failed:[/]         {results['failed']}",
+        border_style="green" if results["failed"] == 0 else "yellow"
     ))
 
 
@@ -275,16 +201,12 @@ def _normalise_transcript(ep: dict, raw_transcript) -> dict:
 
     # If it's a dict, check if it has segments directly or nested
     if isinstance(raw_transcript, dict):
-        raw_transcript["episode_number"] = ep.get("episode_number")
-        raw_transcript["title"]          = ep.get("title")
-        raw_transcript["id"]             = ep.get("transistor_id")
-
-        # API format: segments at top level — wrap under "transcript" key
-        # so parse_segments can find them (it looks for raw["transcript"]["segments"])
-        if "segments" in raw_transcript and "transcript" not in raw_transcript:
-            raw_transcript["transcript"] = {"segments": raw_transcript["segments"]}
-
-        return raw_transcript
+        # Already has transcript key — return as-is with episode metadata added
+        if "transcript" in raw_transcript or "segments" in raw_transcript:
+            raw_transcript["episode_number"] = ep.get("episode_number")
+            raw_transcript["title"]          = ep.get("title")
+            raw_transcript["id"]             = ep.get("transistor_id")
+            return raw_transcript
 
     # Fallback: wrap in expected structure
     return {
