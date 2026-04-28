@@ -45,12 +45,14 @@ jobs:
 
       - name: Check secrets
         run: |
-          python -c "
-          import os
-          print('SUPABASE_URL set:', bool(os.getenv('SUPABASE_URL')))
-          print('SUPABASE_ANON_KEY set:', bool(os.getenv('SUPABASE_ANON_KEY')))
-          print('TRANSISTOR_API_KEY set:', bool(os.getenv('TRANSISTOR_API_KEY')))
-          "
+          echo "=== GitHub expression check ==="
+          echo "SUPABASE_URL expression non-empty: ${{ secrets.SUPABASE_URL != '' }}"
+          echo "SUPABASE_ANON_KEY expression non-empty: ${{ secrets.SUPABASE_ANON_KEY != '' }}"
+          echo "TRANSISTOR_API_KEY expression non-empty: ${{ secrets.TRANSISTOR_API_KEY != '' }}"
+          echo "=== Env var check ==="
+          [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL env: SET (len=${#SUPABASE_URL})" || echo "SUPABASE_URL env: EMPTY"
+          [ -n "$SUPABASE_ANON_KEY" ] && echo "SUPABASE_ANON_KEY env: SET (len=${#SUPABASE_ANON_KEY})" || echo "SUPABASE_ANON_KEY env: EMPTY"
+          [ -n "$TRANSISTOR_API_KEY" ] && echo "TRANSISTOR_API_KEY env: SET (len=${#TRANSISTOR_API_KEY})" || echo "TRANSISTOR_API_KEY env: EMPTY"
 
       - name: Run pipeline
         run: python scripts/run_pipeline.py
