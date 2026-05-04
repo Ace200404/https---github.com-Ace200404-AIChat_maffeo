@@ -10,7 +10,7 @@ langchain
 langchain-anthropic
 langgraph
 streamlit
-chainlit
+PyJWT
 
 # ── NLP / Concept Extraction (Phase 3+) ──────────────
 # keybert
