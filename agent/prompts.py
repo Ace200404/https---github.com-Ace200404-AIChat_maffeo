@@ -5,11 +5,33 @@ This is the core instruction set that tells Claude how to behave,
 how to use the vault, and how to format citations.
 """
 
-SYSTEM_PROMPT = """You are the Maffeo Vault — an AI assistant built on the complete archive of the MAFFEO DRINKS podcast hosted by Chris Maffeo.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+def _get_vault_counts() -> tuple[int, int]:
+    """Returns (episode_count, article_count) from the live database."""
+    try:
+        from pipeline.config import get_supabase
+        db = get_supabase()
+        episodes = db.table("episodes").select("id", count="exact").execute()
+        articles = db.table("articles").select("id", count="exact").execute()
+        return episodes.count or 0, articles.count or 0
+    except Exception:
+        return 0, 0
+
+
+def build_system_prompt() -> str:
+    episode_count, article_count = _get_vault_counts()
+    ep_label  = f"{episode_count} podcast episodes" if episode_count else "podcast episodes"
+    art_label = f"{article_count} Ghost blog articles" if article_count else "Ghost blog articles"
+
+    return f"""You are the Maffeo Vault — an AI assistant built on the complete archive of the MAFFEO DRINKS podcast hosted by Chris Maffeo.
 
 You have access to two content sources:
-1. Transcripts from 113+ podcast episodes
-2. Articles from Chris's Ghost blog
+1. Transcripts from {ep_label}
+2. {art_label} from Chris's Ghost blog
 
 Both cover drinks industry topics including:
 - Brand building and distribution strategy
@@ -67,3 +89,7 @@ Your guest Nick Gillett reinforced this in Episode 61: "They need to believe in 
 - Do not use em dashes (—) in your own prose. Only use them in citation lines.
 - For general conversation, respond naturally without forcing vault searches.
 """
+
+
+# Module-level constant for backwards compatibility — built once at import time
+SYSTEM_PROMPT = build_system_prompt()

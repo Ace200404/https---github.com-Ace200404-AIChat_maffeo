@@ -15,7 +15,7 @@ from langgraph.prebuilt import create_react_agent
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from agent.tools import semantic_search, episode_lookup, speaker_search, memory_recall
-from agent.prompts import SYSTEM_PROMPT
+from agent.prompts import build_system_prompt
 from agent.memory import VaultMemory
 
 
@@ -63,7 +63,7 @@ def get_agent_response(user_message: str, memory: VaultMemory) -> str:
     agent = build_agent()
 
     # Build message history: system prompt + past messages + new message
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    messages = [SystemMessage(content=build_system_prompt())]
 
     for msg in memory.get_history_as_messages():
         if msg["role"] == "user":
