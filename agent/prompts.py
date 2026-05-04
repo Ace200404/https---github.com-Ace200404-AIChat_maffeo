@@ -10,23 +10,47 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def _get_vault_counts() -> tuple[int, int, int]:
-    """Returns (episode_count, max_episode_number, article_count) from the live database."""
+def _get_vault_meta() -> dict:
+    """Returns live counts and latest content info from the database."""
     try:
         from pipeline.config import get_supabase
         db = get_supabase()
-        ep_rows  = db.table("episodes").select("episode_number", count="exact").execute()
-        articles = db.table("articles").select("id", count="exact").execute()
-        max_ep   = max((r.get("episode_number") or 0 for r in ep_rows.data), default=0)
-        return ep_rows.count or 0, max_ep, articles.count or 0
+
+        ep_rows  = db.table("episodes").select("episode_number, title, published_date", count="exact").execute()
+        art_rows = db.table("articles").select("title, published_at", count="exact").order("published_at", desc=True).limit(1).execute()
+
+        max_ep = max((r.get("episode_number") or 0 for r in ep_rows.data), default=0)
+        latest_ep = next((r for r in ep_rows.data if r.get("episode_number") == max_ep), {})
+        latest_art = art_rows.data[0] if art_rows.data else {}
+
+        return {
+            "episode_count": ep_rows.count or 0,
+            "max_episode":   max_ep,
+            "latest_ep_title": latest_ep.get("title", ""),
+            "latest_ep_date":  str(latest_ep.get("published_date", ""))[:10],
+            "article_count": art_rows.count or 0,
+            "latest_art_title": latest_art.get("title", ""),
+            "latest_art_date":  str(latest_art.get("published_at", ""))[:10],
+        }
     except Exception:
-        return 0, 0, 0
+        return {"episode_count": 0, "max_episode": 0, "article_count": 0,
+                "latest_ep_title": "", "latest_ep_date": "",
+                "latest_art_title": "", "latest_art_date": ""}
 
 
 def build_system_prompt() -> str:
-    episode_count, max_episode, article_count = _get_vault_counts()
-    ep_label  = f"{episode_count} podcast episodes (Episodes 1–{max_episode})" if max_episode else "podcast episodes"
-    art_label = f"{article_count} Ghost blog articles" if article_count else "Ghost blog articles"
+    m = _get_vault_meta()
+
+    ep_label  = (
+        f"{m['episode_count']} podcast episodes (Episodes 1–{m['max_episode']}, "
+        f"latest: \"{m['latest_ep_title']}\" published {m['latest_ep_date']})"
+        if m["max_episode"] else "podcast episodes"
+    )
+    art_label = (
+        f"{m['article_count']} Ghost blog articles "
+        f"(latest: \"{m['latest_art_title']}\" published {m['latest_art_date']})"
+        if m["article_count"] else "Ghost blog articles"
+    )
 
     return f"""You are the Maffeo Vault — an AI assistant built on the complete archive of the MAFFEO DRINKS podcast hosted by Chris Maffeo.
 
