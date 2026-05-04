@@ -86,7 +86,7 @@ def fetch_all_published_posts() -> list[dict]:
             "formats": "plaintext",
             "limit":   "all",
             "order":   "published_at asc",
-            "filter":  "status:published",
+            "filter":  "status:[published,sent]",
         },
         timeout=60,
     )
