@@ -10,21 +10,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def _get_vault_counts() -> tuple[int, int]:
-    """Returns (episode_count, article_count) from the live database."""
+def _get_vault_counts() -> tuple[int, int, int]:
+    """Returns (episode_count, max_episode_number, article_count) from the live database."""
     try:
         from pipeline.config import get_supabase
         db = get_supabase()
-        episodes = db.table("episodes").select("id", count="exact").execute()
+        ep_rows  = db.table("episodes").select("episode_number", count="exact").execute()
         articles = db.table("articles").select("id", count="exact").execute()
-        return episodes.count or 0, articles.count or 0
+        max_ep   = max((r.get("episode_number") or 0 for r in ep_rows.data), default=0)
+        return ep_rows.count or 0, max_ep, articles.count or 0
     except Exception:
-        return 0, 0
+        return 0, 0, 0
 
 
 def build_system_prompt() -> str:
-    episode_count, article_count = _get_vault_counts()
-    ep_label  = f"{episode_count} podcast episodes" if episode_count else "podcast episodes"
+    episode_count, max_episode, article_count = _get_vault_counts()
+    ep_label  = f"{episode_count} podcast episodes (Episodes 1–{max_episode})" if max_episode else "podcast episodes"
     art_label = f"{article_count} Ghost blog articles" if article_count else "Ghost blog articles"
 
     return f"""You are the Maffeo Vault — an AI assistant built on the complete archive of the MAFFEO DRINKS podcast hosted by Chris Maffeo.
