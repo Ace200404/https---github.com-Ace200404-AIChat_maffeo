@@ -71,40 +71,55 @@ def get_session() -> requests.Session:
 
 def fetch_all_published_posts() -> list[dict]:
     """
-    Fetches all published posts from Ghost Admin API.
+    Fetches all published + sent posts from Ghost Admin API using pagination.
     Admin API bypasses members-only restrictions so body content is always returned.
+    Uses page-by-page fetching because Ghost caps responses at 100 even with limit=all.
     """
     ghost_url, admin_key = get_credentials()
-    token   = _make_jwt(admin_key)
     session = get_session()
 
-    response = session.get(
-        f"{ghost_url}/ghost/api/admin/posts/",
-        headers={"Authorization": f"Ghost {token}"},
-        params={
-            "include": "tags,authors",
-            "formats": "plaintext",
-            "limit":   "all",
-            "order":   "published_at asc",
-            "filter":  "status:[published,sent]",
-        },
-        timeout=60,
-    )
-    response.raise_for_status()
-    data = response.json()
-
     posts = []
-    for post in data.get("posts", []):
-        posts.append({
-            "ghost_id":     post["id"],
-            "title":        post.get("title", "Untitled"),
-            "slug":         post.get("slug", ""),
-            "published_at": post.get("published_at"),
-            "author":       _extract_author(post),
-            "tags":         _extract_tags(post),
-            "url":          post.get("url", ""),
-            "plaintext":    post.get("plaintext", "") or "",
-        })
+    page  = 1
+
+    while True:
+        token = _make_jwt(admin_key)  # refresh JWT each page (5-min expiry)
+        response = session.get(
+            f"{ghost_url}/ghost/api/admin/posts/",
+            headers={"Authorization": f"Ghost {token}"},
+            params={
+                "include": "tags,authors",
+                "formats": "plaintext",
+                "limit":   "100",
+                "page":    str(page),
+                "order":   "published_at asc",
+                "filter":  "status:[published,sent]",
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        data       = response.json()
+        batch      = data.get("posts", [])
+        pagination = data.get("meta", {}).get("pagination", {})
+
+        for post in batch:
+            posts.append({
+                "ghost_id":     post["id"],
+                "title":        post.get("title", "Untitled"),
+                "slug":         post.get("slug", ""),
+                "published_at": post.get("published_at"),
+                "author":       _extract_author(post),
+                "tags":         _extract_tags(post),
+                "url":          post.get("url", ""),
+                "plaintext":    post.get("plaintext", "") or "",
+            })
+
+        total_pages = pagination.get("pages", 1)
+        console.print(f"  Ghost: page {page}/{total_pages} — {len(batch)} posts")
+
+        if page >= total_pages:
+            break
+        page += 1
+        time.sleep(0.5)  # be polite to the API
 
     return posts
 
